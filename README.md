@@ -20,4 +20,4 @@ This app is built in Rust using [Yew](https://yew.rs/).  As GitHub mentions, I s
 
 - List Items with images, inks, and comments
 - Choose order and rearrange lists within a group
-- Flicker randomly through items in a list until the list is clicked on.
+- Turn off heartbeat timer while all lists in chosen group are frozen.

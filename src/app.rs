@@ -2,14 +2,14 @@ use log::*;
 use rand::{rngs::OsRng, seq::IteratorRandom};
 use serde_derive::{Deserialize, Serialize};
 use std::{
-    cell::RefCell,
     collections::{BTreeMap, BTreeSet},
+    time::Duration,
 };
 use yew::format::Json;
 use yew::prelude::*;
 use yew::services::{
     storage::{Area, StorageService},
-    DialogService,
+    DialogService, IntervalService, Task,
 };
 
 const KEY: &str = "automatic-spoon.self";
@@ -18,6 +18,8 @@ pub struct App {
     link: ComponentLink<Self>,
     storage: StorageService,
     dialog: DialogService,
+    _interval: IntervalService,
+    _heartbeat: Box<dyn Task>,
     state: State,
     view: View,
 }
@@ -35,7 +37,7 @@ pub struct View {
     add_to_list: String,
     current_group: String,
     new_group_name: String,
-    cache: RefCell<BTreeMap<String, String>>,
+    cache: BTreeMap<String, String>,
 }
 
 impl View {
@@ -63,7 +65,10 @@ pub enum Msg {
     RemoveGroup(String),
     RemoveGroupItem(String),
     Regenerate,
+    FreezeList(String),
+    ThawList(String),
     Purge,
+    Tick,
     Nothing,
 }
 
@@ -74,6 +79,9 @@ impl Component for App {
     fn create(_: Self::Properties, link: ComponentLink<Self>) -> Self {
         let storage = StorageService::new(Area::Local).unwrap();
         let dialog = DialogService::new();
+        let mut _interval = IntervalService::new();
+        let _heartbeat =
+            Box::new(_interval.spawn(Duration::from_millis(100), link.callback(|_| Msg::Tick)));
         let state = {
             if let Json(Ok(restored_entries)) = storage.restore(KEY) {
                 restored_entries
@@ -88,6 +96,8 @@ impl Component for App {
             link,
             storage,
             dialog,
+            _interval,
+            _heartbeat,
             state,
             view,
         }
@@ -174,8 +184,15 @@ impl Component for App {
                     .get_mut(&self.view.current_group)
                     .map(|group| group.remove(&name));
             }
+            FreezeList(name) => {
+                let new = self.choose_from_list(&name);
+                self.view.cache.insert(name, new);
+            }
+            ThawList(name) => {
+                self.view.cache.remove(&name);
+            }
             Regenerate => {
-                self.view.cache.get_mut().clear();
+                self.view.cache.clear();
             }
             Purge => {
                 if self
@@ -186,6 +203,7 @@ impl Component for App {
                     self.view = View::default();
                 }
             }
+            Tick => {}
             Nothing => {}
         }
         self.storage.store(KEY, Json(&self.state));
@@ -265,14 +283,7 @@ impl App {
                         {"Delete Group"}
                     </button>
                     <dl>
-                        {for group.iter().map(|entry| {
-                            html! {
-                                <>
-                                <dt>{entry}</dt>
-                                <dd>{self.get_random_element(entry)}</dd>
-                                </>
-                            }
-                        })}
+                        {for group.iter().map(|entry| { self.render_group_item(entry)})}
                     </dl>
                 </div>
             }
@@ -280,6 +291,33 @@ impl App {
             html! {
                 <div class="group">
                 </div>
+            }
+        }
+    }
+    fn render_group_item(&self, name: &str) -> Html {
+        let name2 = name.to_owned();
+        match self.view.cache.get(name) {
+            Some(item) => html! {
+                <>
+                <dt>{name}</dt>
+                <dd>{item}
+                <button class="delete" onclick=self.link.callback(move |_| Msg::ThawList(name2.clone()))>
+                    {"Unlock"}
+                </button>
+                </dd>
+                </>
+            },
+            None => {
+                let item = self.choose_from_list(&name);
+                html! {
+                    <>
+                    <dt>{name}</dt>
+                    <dd
+                        onclick=self.link.callback(move |_| Msg::FreezeList(name2.clone()) )
+                    >{item}
+                    </dd>
+                    </>
+                }
             }
         }
     }
@@ -379,19 +417,14 @@ impl App {
             }
         }
     }
-    fn get_random_element(&self, name: &str) -> String {
-        // XXX TODO Ew, this is ugly.
-        if self.view.cache.borrow().contains_key(name) {
-            return self.view.cache.borrow().get(name).unwrap().to_owned();
-        };
+    fn choose_from_list(&self, name: &str) -> String {
         let mut rng: OsRng = Default::default();
         let item = self
             .state
             .lists
             .get(name)
             .map(|list| list.iter().choose(&mut rng).unwrap().to_owned())
-            .unwrap_or("".to_owned());
-        self.view.cache.borrow_mut().insert(name.to_owned(), item);
-        self.view.cache.borrow().get(name).unwrap().to_owned()
+            .unwrap_or_default();
+        item
     }
 }
