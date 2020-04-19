@@ -1,29 +1,23 @@
-[![Netlify Status](https://api.netlify.com/api/v1/badges/5ba03ba7-ff8b-4c54-94e7-cd5fd76a6737/deploy-status)](https://app.netlify.com/sites/yew-todomvc/deploys)
+# [Automatic Spoon](https://tene.github.io/automatic-spoon/)
 
-## About
+Web App for choosing random items from lists you define.  The name was chosen randomly by GitHub's random name generator.
 
-This template shows how to create a web app using Yew and wasm-pack. 
+In the unlikely even that anyone besides me ever uses this, please feel free to file an issue with any requests you have.  I just threw together the simplest thing that could possibly work and stopped there, but I'm open to requests for functionality, UI, and style requests.
 
-## 🚴 Usage
+The lists live entirely in your browser's local storage.  This does not connect to any server anywhere, and no list data leaves your computer except through any links you click on.
 
-### 🛠️ Build with `yarn run build`
+## Use and Development
 
-```
-yarn run build
-```
+You can use whatever release of [Automatic Spoon](https://tene.github.io/automatic-spoon/) I'm personally using in your browser.  This may change unpredictably, and might lose any data you've stored there.  I plan to add some kind of export functionality so you can save whatever you've made with this, and I'll try to support importing old exports whenever it's easy and convenient.
 
-### 🔬 Serve locally with `yarn run start:dev`
+Build with `yarn run build`
 
-```
-yarn run start:dev
-```
+Serve locally with `yarn run start:dev`
 
+This app is built in Rust using [Yew](https://yew.rs/).  As GitHub mentions, I started this project using yewstack/yew-wasm-pack-template
 
-## 🔋 Batteries Included
+## TODO
 
-* [`wasm-bindgen`](https://github.com/rustwasm/wasm-bindgen) for communicating
-  between WebAssembly and JavaScript.
-* [`console_error_panic_hook`](https://github.com/rustwasm/console_error_panic_hook)
-  for logging panic messages to the developer console.
-* [`wee_alloc`](https://github.com/rustwasm/wee_alloc), an allocator optimized
-  for small code size.
+- List Items with images, inks, and comments
+- Choose order and rearrange lists within a group
+- Flicker randomly through items in a list until the list is clicked on.
