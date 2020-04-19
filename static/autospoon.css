@@ -1,0 +1,35 @@
+.selected {
+    background-color: azure;
+}
+
+.autospoon {
+    display: grid;
+    grid-template-columns: min-content 1fr;
+}
+
+.autospoon>div {
+    border-bottom: 1px solid black;
+}
+
+.lists {
+    white-space: nowrap;
+    overflow-x: auto;
+}
+
+.list {
+    white-space: nowrap;
+    overflow-x: auto;
+}
+
+.list p {
+    display: inline-block;
+}
+
+.group {
+    white-space: nowrap;
+    overflow-x: auto;
+}
+
+.group p {
+    display: inline-block;
+}

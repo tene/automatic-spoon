@@ -1,6 +1,10 @@
 use log::*;
+use rand::{rngs::OsRng, seq::IteratorRandom};
 use serde_derive::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+};
 use yew::format::Json;
 use yew::prelude::*;
 use yew::services::{
@@ -31,16 +35,15 @@ pub struct View {
     add_to_list: String,
     current_group: String,
     new_group_name: String,
+    cache: RefCell<BTreeMap<String, String>>,
 }
 
 impl View {
     pub fn new(current_list: String, current_group: String) -> Self {
         Self {
             current_list,
-            new_list_name: "".to_owned(),
-            add_to_list: "".to_owned(),
             current_group,
-            new_group_name: "".to_owned(),
+            ..Default::default()
         }
     }
 }
@@ -59,6 +62,7 @@ pub enum Msg {
     UpdateGroupName(String),
     RemoveGroup(String),
     RemoveGroupItem(String),
+    Regenerate,
     Purge,
     Nothing,
 }
@@ -170,6 +174,9 @@ impl Component for App {
                     .get_mut(&self.view.current_group)
                     .map(|group| group.remove(&name));
             }
+            Regenerate => {
+                self.view.cache.get_mut().clear();
+            }
             Purge => {
                 if self
                     .dialog
@@ -251,6 +258,9 @@ impl App {
             html! {
                 <div class="group">
                     <p>{&name}</p>
+                    <button onclick=self.link.callback(move |_| Msg::Regenerate)>
+                        {"Regenerate"}
+                    </button>
                     <button class="delete" onclick=self.link.callback(move |_| Msg::RemoveGroup(name.clone()))>
                         {"Delete Group"}
                     </button>
@@ -259,7 +269,7 @@ impl App {
                             html! {
                                 <>
                                 <dt>{entry}</dt>
-                                <dd>{entry}</dd>
+                                <dd>{self.get_random_element(entry)}</dd>
                                 </>
                             }
                         })}
@@ -368,5 +378,20 @@ impl App {
                 <div class="list"></div>
             }
         }
+    }
+    fn get_random_element(&self, name: &str) -> String {
+        // XXX TODO Ew, this is ugly.
+        if self.view.cache.borrow().contains_key(name) {
+            return self.view.cache.borrow().get(name).unwrap().to_owned();
+        };
+        let mut rng: OsRng = Default::default();
+        let item = self
+            .state
+            .lists
+            .get(name)
+            .map(|list| list.iter().choose(&mut rng).unwrap().to_owned())
+            .unwrap_or("".to_owned());
+        self.view.cache.borrow_mut().insert(name.to_owned(), item);
+        self.view.cache.borrow().get(name).unwrap().to_owned()
     }
 }
