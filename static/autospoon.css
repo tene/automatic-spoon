@@ -4,7 +4,8 @@
 
 .autospoon {
     display: grid;
-    grid-template-columns: min-content 1fr;
+    /*grid-template-columns: min-content 1fr;*/
+    grid-template: "groups results results" "lists edit-list edit-item" "footer footer footer" / min-content min-content 1fr;
 }
 
 .autospoon>div {
@@ -14,22 +15,33 @@
 .lists {
     white-space: nowrap;
     overflow-x: auto;
+    grid-area: lists;
 }
 
 .list {
     white-space: nowrap;
     overflow-x: auto;
+    grid-area: edit-list;
 }
 
 .list p {
     display: inline-block;
 }
 
+.groups {
+    grid-area: groups;
+}
+
 .group {
+    grid-area: results;
     white-space: nowrap;
     overflow-x: auto;
 }
 
 .group p {
     display: inline-block;
+}
+
+.edit-item {
+    grid-area: edit-item;
 }

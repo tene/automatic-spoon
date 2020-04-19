@@ -18,6 +18,6 @@ This app is built in Rust using [Yew](https://yew.rs/).  As GitHub mentions, I s
 
 ## TODO
 
-- List Items with images, inks, and comments
+- Fixed-size layout to avoid problems with differently-sized images
 - Choose order and rearrange lists within a group
 - Turn off heartbeat timer while all lists in chosen group are frozen.
