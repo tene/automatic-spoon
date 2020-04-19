@@ -3,13 +3,17 @@ use serde_derive::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use yew::format::Json;
 use yew::prelude::*;
-use yew::services::storage::{Area, StorageService};
+use yew::services::{
+    storage::{Area, StorageService},
+    DialogService,
+};
 
 const KEY: &str = "automatic-spoon.self";
 
 pub struct App {
     link: ComponentLink<Self>,
     storage: StorageService,
+    dialog: DialogService,
     state: State,
     view: View,
 }
@@ -43,14 +47,16 @@ impl View {
 
 pub enum Msg {
     CreateList,
-    CreateGroup,
-    AddToSet,
-    AddToGroup(String),
+    SelectList(String),
+    AddToList,
     UpdateListName(String),
     UpdateListAddition(String),
-    UpdateGroupName(String),
     RemoveList(String),
     RemoveListItem(String),
+    CreateGroup,
+    SelectGroup(String),
+    AddToGroup(String),
+    UpdateGroupName(String),
     RemoveGroup(String),
     RemoveGroupItem(String),
     Purge,
@@ -63,6 +69,7 @@ impl Component for App {
 
     fn create(_: Self::Properties, link: ComponentLink<Self>) -> Self {
         let storage = StorageService::new(Area::Local).unwrap();
+        let dialog = DialogService::new();
         let state = {
             if let Json(Ok(restored_entries)) = storage.restore(KEY) {
                 restored_entries
@@ -76,6 +83,7 @@ impl Component for App {
         App {
             link,
             storage,
+            dialog,
             state,
             view,
         }
@@ -100,7 +108,13 @@ impl Component for App {
                     .or_default();
                 self.view.current_group = self.view.new_group_name.split_off(0);
             }
-            AddToSet => {
+            SelectList(name) => {
+                self.view.current_list = name;
+            }
+            SelectGroup(name) => {
+                self.view.current_group = name;
+            }
+            AddToList => {
                 let entry = self.view.add_to_list.clone();
                 self.view.add_to_list.truncate(0);
                 self.state
@@ -124,10 +138,15 @@ impl Component for App {
                 self.view.new_group_name = text;
             }
             RemoveList(name) => {
-                let removed = self.state.lists.remove(&name);
-                if removed.is_some() {
-                    for (_, group) in self.state.groups.iter_mut() {
-                        group.remove(&name);
+                if self
+                    .dialog
+                    .confirm(&format!("Really delete list {}?", name))
+                {
+                    let removed = self.state.lists.remove(&name);
+                    if removed.is_some() {
+                        for (_, group) in self.state.groups.iter_mut() {
+                            group.remove(&name);
+                        }
                     }
                 }
             }
@@ -138,7 +157,12 @@ impl Component for App {
                     .map(|list| list.remove(&name));
             }
             RemoveGroup(name) => {
-                self.state.groups.remove(&name);
+                if self
+                    .dialog
+                    .confirm(&format!("Really delete group {}?", name))
+                {
+                    self.state.groups.remove(&name);
+                }
             }
             RemoveGroupItem(name) => {
                 self.state
@@ -147,8 +171,13 @@ impl Component for App {
                     .map(|group| group.remove(&name));
             }
             Purge => {
-                self.state = State::default();
-                self.view = View::default();
+                if self
+                    .dialog
+                    .confirm("Really delete all saved lists and groups?")
+                {
+                    self.state = State::default();
+                    self.view = View::default();
+                }
             }
             Nothing => {}
         }
@@ -180,8 +209,22 @@ impl App {
             <ul id="groups">
                 {
                     for self.state.groups.keys().map(|group| {
+                        let name = group.to_owned();
+                        let name2 = name.clone();
+                        let class = if name == self.view.current_group {
+                            "selected"
+                        } else {
+                            ""
+                        };
                         html! {
-                            <li> {group} </li>
+                            <li
+                                class=class
+                                onclick=self.link.callback(move |_| Msg::SelectGroup(name.clone()))
+                            > {group}
+                                <button class="delete" onclick=self.link.callback(move |_| Msg::RemoveGroup(name2.clone()))>
+                                    {"Delete"}
+                                </button>
+                            </li>
                         }
                     })
                 }
@@ -197,15 +240,48 @@ impl App {
             </ul>
         }
     }
+    fn render_list_item(&self, name: &str) -> Html {
+        let name3 = name.to_owned();
+        let name4 = name.to_owned();
+        let class = if name == self.view.current_list {
+            "selected"
+        } else {
+            ""
+        };
+        let buttons = if self.view.current_group != "" {
+            let name1 = name.to_owned();
+            let name2 = name.to_owned();
+            html! {
+                <>
+                <button class="add" onclick=self.link.callback(move |_| Msg::AddToGroup(name1.clone()))>
+                    {"+"}
+                </button>
+                <button class="add" onclick=self.link.callback(move |_| Msg::RemoveGroupItem(name2.clone()))>
+                    {"-"}
+                </button>
+                </>
+            }
+        } else {
+            html! {<></>}
+        };
+        html! {
+            <li
+                class=class
+                onclick=self.link.callback(move |_| Msg::SelectList(name3.clone()))
+            >
+                {buttons}
+                {name}
+                <button class="delete" onclick=self.link.callback(move |_| Msg::RemoveList(name4.clone()))>
+                    {"Delete"}
+                </button>
+            </li>
+        }
+    }
     fn render_lists(&self) -> Html {
         html! {
             <ul id="lists">
                 {
-                    for self.state.lists.keys().map(|list| {
-                        html! {
-                            <li> {list} </li>
-                        }
-                    })
+                    for self.state.lists.keys().map(|name| {self.render_list_item(name)})
                 }
                 <li>
                     <input class="edit"
@@ -226,8 +302,14 @@ impl App {
                 <h2>{"Entries in list "}{&self.view.current_list}</h2>
                 <ul id="entries">
                     {for list.iter().map(|entry| {
+                        let name = entry.to_owned();
                         html! {
-                                <li> {entry} </li>
+                                <li>
+                                    <button onclick=self.link.callback(move |_| Msg::RemoveListItem(name.clone()))>
+                                        {"-"}
+                                    </button>
+                                    {entry}
+                                </li>
                             }
                         })
                     }
@@ -237,7 +319,7 @@ impl App {
                             value=&self.view.add_to_list
                             oninput=self.link.callback(move |e: InputData| Msg::UpdateListAddition(e.value))
                             onkeypress=self.link.callback(move |e: KeyboardEvent| {
-                                if e.key() == "Enter" { Msg::AddToSet } else { Msg::Nothing }
+                                if e.key() == "Enter" { Msg::AddToList } else { Msg::Nothing }
                         }) />
                     </li>
                 </ul>
