@@ -1,46 +1,60 @@
 use log::*;
 use serde_derive::{Deserialize, Serialize};
-use strum::IntoEnumIterator;
-use strum_macros::{EnumIter, ToString};
+use std::collections::{BTreeMap, BTreeSet};
 use yew::format::Json;
-use yew::services::storage::{Area, StorageService};
 use yew::prelude::*;
+use yew::services::storage::{Area, StorageService};
 
-const KEY: &str = "yew.todomvc.self";
+const KEY: &str = "automatic-spoon.self";
 
 pub struct App {
     link: ComponentLink<Self>,
     storage: StorageService,
     state: State,
+    view: View,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 pub struct State {
-    entries: Vec<Entry>,
-    filter: Filter,
-    value: String,
-    edit_value: String,
+    lists: BTreeMap<String, BTreeSet<String>>,
+    groups: BTreeMap<String, BTreeSet<String>>,
 }
 
-#[derive(Serialize, Deserialize)]
-struct Entry {
-    description: String,
-    completed: bool,
-    editing: bool,
+#[derive(Default)]
+pub struct View {
+    current_list: String,
+    new_list_name: String,
+    add_to_list: String,
+    current_group: String,
+    new_group_name: String,
+}
+
+impl View {
+    pub fn new(current_list: String, current_group: String) -> Self {
+        Self {
+            current_list,
+            new_list_name: "".to_owned(),
+            add_to_list: "".to_owned(),
+            current_group,
+            new_group_name: "".to_owned(),
+        }
+    }
 }
 
 pub enum Msg {
-    Add,
-    Edit(usize),
-    Update(String),
-    UpdateEdit(String),
-    Remove(usize),
-    SetFilter(Filter),
-    ToggleAll,
-    ToggleEdit(usize),
-    Toggle(usize),
-    ClearCompleted,
-    Nope,
+    CreateList,
+    CreateGroup,
+    AddToSet,
+    AddToGroup(String),
+    UpdateListName(String),
+    UpdateListAddition(String),
+    UpdateGroupName(String),
+    RemoveList(String),
+    RemoveListItem(String),
+    RemoveGroup(String),
+    RemoveGroupItem(String),
+    Purge,
+    Nothing,
 }
 
 impl Component for App {
@@ -49,305 +63,190 @@ impl Component for App {
 
     fn create(_: Self::Properties, link: ComponentLink<Self>) -> Self {
         let storage = StorageService::new(Area::Local).unwrap();
-        let entries = {
+        let state = {
             if let Json(Ok(restored_entries)) = storage.restore(KEY) {
                 restored_entries
             } else {
-                Vec::new()
+                State::default()
             }
         };
-        let state = State {
-            entries,
-            filter: Filter::All,
-            value: "".into(),
-            edit_value: "".into(),
-        };
-        App { link, storage, state }
+        let current_list = state.lists.keys().cloned().next().unwrap_or_default();
+        let current_group = state.groups.keys().cloned().next().unwrap_or_default();
+        let view = View::new(current_list, current_group);
+        App {
+            link,
+            storage,
+            state,
+            view,
+        }
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
+        use Msg::*;
         match msg {
-            Msg::Add => {
-                let entry = Entry {
-                    description: self.state.value.clone(),
-                    completed: false,
-                    editing: false,
-                };
-                self.state.entries.push(entry);
-                self.state.value = "".to_string();
+            CreateList => {
+                let _ = self
+                    .state
+                    .lists
+                    .entry(self.view.new_list_name.clone())
+                    .or_default();
+                self.view.current_list = self.view.new_list_name.split_off(0);
             }
-            Msg::Edit(idx) => {
-                let edit_value = self.state.edit_value.clone();
-                self.state.complete_edit(idx, edit_value);
-                self.state.edit_value = "".to_string();
+            CreateGroup => {
+                let _ = self
+                    .state
+                    .groups
+                    .entry(self.view.new_group_name.clone())
+                    .or_default();
+                self.view.current_group = self.view.new_group_name.split_off(0);
             }
-            Msg::Update(val) => {
-                println!("Input: {}", val);
-                self.state.value = val;
+            AddToSet => {
+                let entry = self.view.add_to_list.clone();
+                self.view.add_to_list.truncate(0);
+                self.state
+                    .lists
+                    .get_mut(&self.view.current_list)
+                    .map(|list| list.insert(entry));
             }
-            Msg::UpdateEdit(val) => {
-                println!("Input: {}", val);
-                self.state.edit_value = val;
+            AddToGroup(entry) => {
+                self.state
+                    .groups
+                    .get_mut(&self.view.current_group)
+                    .map(|group| group.insert(entry));
             }
-            Msg::Remove(idx) => {
-                self.state.remove(idx);
+            UpdateListName(text) => {
+                self.view.new_list_name = text;
             }
-            Msg::SetFilter(filter) => {
-                self.state.filter = filter;
+            UpdateListAddition(text) => {
+                self.view.add_to_list = text;
             }
-            Msg::ToggleEdit(idx) => {
-                self.state.edit_value = self.state.entries[idx].description.clone();
-                self.state.toggle_edit(idx);
+            UpdateGroupName(text) => {
+                self.view.new_group_name = text;
             }
-            Msg::ToggleAll => {
-                let status = !self.state.is_all_completed();
-                self.state.toggle_all(status);
+            RemoveList(name) => {
+                let removed = self.state.lists.remove(&name);
+                if removed.is_some() {
+                    for (_, group) in self.state.groups.iter_mut() {
+                        group.remove(&name);
+                    }
+                }
             }
-            Msg::Toggle(idx) => {
-                self.state.toggle(idx);
+            RemoveListItem(name) => {
+                self.state
+                    .lists
+                    .get_mut(&self.view.current_list)
+                    .map(|list| list.remove(&name));
             }
-            Msg::ClearCompleted => {
-                self.state.clear_completed();
+            RemoveGroup(name) => {
+                self.state.groups.remove(&name);
             }
-            Msg::Nope => {}
+            RemoveGroupItem(name) => {
+                self.state
+                    .groups
+                    .get_mut(&self.view.current_group)
+                    .map(|group| group.remove(&name));
+            }
+            Purge => {
+                self.state = State::default();
+                self.view = View::default();
+            }
+            Nothing => {}
         }
-        self.storage.store(KEY, Json(&self.state.entries));
+        self.storage.store(KEY, Json(&self.state));
         true
     }
 
     fn view(&self) -> Html {
         info!("rendered!");
         html! {
-            <div class="todomvc-wrapper">
-                <section class="todoapp">
-                    <header class="header">
-                        <h1>{ "todos" }</h1>
-                        { self.view_input() }
-                    </header>
-                    <section class="main">
-                        <input class="toggle-all" type="checkbox" checked=self.state.is_all_completed() onclick=self.link.callback(|_| Msg::ToggleAll) />
-                        <ul class="todo-list">
-                            { for self.state.entries.iter().filter(|e| self.state.filter.fit(e))
-                                .enumerate()
-                                .map(|val| self.view_entry(val)) }
-                        </ul>
-                    </section>
-                    <footer class="footer">
-                        <span class="todo-count">
-                            <strong>{ self.state.total() }</strong>
-                            { " item(s) left" }
-                        </span>
-                        <ul class="filters">
-                            { for Filter::iter().map(|flt| self.view_filter(flt)) }
-                        </ul>
-                        <button class="clear-completed" onclick=self.link.callback(|_| Msg::ClearCompleted)>
-                            { format!("Clear completed ({})", self.state.total_completed()) }
-                        </button>
-                    </footer>
-                </section>
-                <footer class="info">
-                    <p>{ "Double-click to edit a todo" }</p>
-                    <p>{ "Written by " }<a href="https://github.com/DenisKolodin/" target="_blank">{ "Denis Kolodin" }</a></p>
-                    <p>{ "Part of " }<a href="http://todomvc.com/" target="_blank">{ "TodoMVC" }</a></p>
-                </footer>
-            </div>
+            <>
+            <h1>{"Automatic Spoon!"}</h1>
+            <h2>{"Groups"}</h2>
+            { self.render_groups()}
+            <h2>{"Lists"}</h2>
+            { self.render_lists()}
+            {self.render_list()}
+            <button class="purge" onclick=self.link.callback(|_| Msg::Purge)>
+                {"Purge Everything"}
+            </button>
+            </>
         }
     }
 }
-
 
 impl App {
-    fn view_filter(&self, filter: Filter) -> Html {
-        let flt = filter.clone();
-
+    fn render_groups(&self) -> Html {
         html! {
-            <li>
-                <a class=if self.state.filter == flt { "selected" } else { "not-selected" }
-                   href=&flt
-                   onclick=self.link.callback(move |_| Msg::SetFilter(flt.clone()))>
-                    { filter }
-                </a>
-            </li>
-        }
-    }
-
-    fn view_input(&self) -> Html {
-        html! {
-            // You can use standard Rust comments. One line:
-            // <li></li>
-            <input class="new-todo"
-                   placeholder="What needs to be done?"
-                   value=&self.state.value
-                   oninput=self.link.callback(|e: InputData| Msg::Update(e.value))
-                   onkeypress=self.link.callback(|e: KeyboardEvent| {
-                       if e.key() == "Enter" { Msg::Add } else { Msg::Nope }
-                   }) />
-            /* Or multiline:
-            <ul>
-                <li></li>
+            <ul id="groups">
+                {
+                    for self.state.groups.keys().map(|group| {
+                        html! {
+                            <li> {group} </li>
+                        }
+                    })
+                }
+                <li>
+                    <input class="edit"
+                        type="text"
+                        value=&self.view.new_group_name
+                        oninput=self.link.callback(move |e: InputData| Msg::UpdateGroupName(e.value))
+                        onkeypress=self.link.callback(move |e: KeyboardEvent| {
+                            if e.key() == "Enter" { Msg::CreateGroup } else { Msg::Nothing }
+                    }) />
+                </li>
             </ul>
-            */
         }
     }
-
-    fn view_entry(&self, (idx, entry): (usize, &Entry)) -> Html {
-        let mut class = "todo".to_string();
-        if entry.editing {
-            class.push_str(" editing");
-        }
-        if entry.completed {
-            class.push_str(" completed");
-        }
-
+    fn render_lists(&self) -> Html {
         html! {
-            <li class=class>
-                <div class="view">
-                    <input class="toggle" type="checkbox" checked=entry.completed onclick=self.link.callback(move |_| Msg::Toggle(idx)) />
-                    <label ondoubleclick=self.link.callback(move |_| Msg::ToggleEdit(idx))>{ &entry.description }</label>
-                    <button class="destroy" onclick=self.link.callback(move |_| Msg::Remove(idx)) />
-                </div>
-                { self.view_entry_edit_input((&idx, &entry)) }
-            </li>
+            <ul id="lists">
+                {
+                    for self.state.lists.keys().map(|list| {
+                        html! {
+                            <li> {list} </li>
+                        }
+                    })
+                }
+                <li>
+                    <input class="edit"
+                        type="text"
+                        value=&self.view.new_list_name
+                        oninput=self.link.callback(move |e: InputData| Msg::UpdateListName(e.value))
+                        onkeypress=self.link.callback(move |e: KeyboardEvent| {
+                            if e.key() == "Enter" { Msg::CreateList } else { Msg::Nothing }
+                    }) />
+                </li>
+            </ul>
         }
     }
-
-    fn view_entry_edit_input(&self, (idx, entry): (&usize, &Entry)) -> Html {
-        let idx = *idx;
-        if entry.editing {
+    fn render_list(&self) -> Html {
+        if let Some(list) = self.state.lists.get(&self.view.current_list) {
             html! {
-                <input class="edit"
-                       type="text"
-                       value=&entry.description
-                       oninput=self.link.callback(move |e: InputData| Msg::UpdateEdit(e.value))
-                       onblur=self.link.callback(move |_| Msg::Edit(idx))
-                       onkeypress=self.link.callback(move |e: KeyboardEvent| {
-                          if e.key() == "Enter" { Msg::Edit(idx) } else { Msg::Nope }
-                       }) />
+                <>
+                <h2>{"Entries in list "}{&self.view.current_list}</h2>
+                <ul id="entries">
+                    {for list.iter().map(|entry| {
+                        html! {
+                                <li> {entry} </li>
+                            }
+                        })
+                    }
+                    <li>
+                        <input class="edit"
+                            type="text"
+                            value=&self.view.add_to_list
+                            oninput=self.link.callback(move |e: InputData| Msg::UpdateListAddition(e.value))
+                            onkeypress=self.link.callback(move |e: KeyboardEvent| {
+                                if e.key() == "Enter" { Msg::AddToSet } else { Msg::Nothing }
+                        }) />
+                    </li>
+                </ul>
+                </>
             }
         } else {
-            html! { <input type="hidden" /> }
-        }
-    }
-}
-
-
-
-#[derive(EnumIter, ToString, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Filter {
-    All,
-    Active,
-    Completed,
-}
-
-impl<'a> Into<Href> for &'a Filter {
-    fn into(self) -> Href {
-        match *self {
-            Filter::All => "#/".into(),
-            Filter::Active => "#/active".into(),
-            Filter::Completed => "#/completed".into(),
-        }
-    }
-}
-
-impl Filter {
-    fn fit(&self, entry: &Entry) -> bool {
-        match *self {
-            Filter::All => true,
-            Filter::Active => !entry.completed,
-            Filter::Completed => entry.completed,
-        }
-    }
-}
-
-impl State {
-    fn total(&self) -> usize {
-        self.entries.len()
-    }
-
-    fn total_completed(&self) -> usize {
-        self.entries
-            .iter()
-            .filter(|e| Filter::Completed.fit(e))
-            .count()
-    }
-
-    fn is_all_completed(&self) -> bool {
-        let mut filtered_iter = self
-            .entries
-            .iter()
-            .filter(|e| self.filter.fit(e))
-            .peekable();
-
-        if filtered_iter.peek().is_none() {
-            return false;
-        }
-
-        filtered_iter.all(|e| e.completed)
-    }
-
-    fn toggle_all(&mut self, value: bool) {
-        for entry in self.entries.iter_mut() {
-            if self.filter.fit(entry) {
-                entry.completed = value;
+            html! {
+                <></>
             }
         }
-    }
-
-    fn clear_completed(&mut self) {
-        let entries = self
-            .entries
-            .drain(..)
-            .filter(|e| Filter::Active.fit(e))
-            .collect();
-        self.entries = entries;
-    }
-
-    fn toggle(&mut self, idx: usize) {
-        let filter = self.filter.clone();
-        let mut entries = self
-            .entries
-            .iter_mut()
-            .filter(|e| filter.fit(e))
-            .collect::<Vec<_>>();
-        let entry = entries.get_mut(idx).unwrap();
-        entry.completed = !entry.completed;
-    }
-
-    fn toggle_edit(&mut self, idx: usize) {
-        let filter = self.filter.clone();
-        let mut entries = self
-            .entries
-            .iter_mut()
-            .filter(|e| filter.fit(e))
-            .collect::<Vec<_>>();
-        let entry = entries.get_mut(idx).unwrap();
-        entry.editing = !entry.editing;
-    }
-
-    fn complete_edit(&mut self, idx: usize, val: String) {
-        let filter = self.filter.clone();
-        let mut entries = self
-            .entries
-            .iter_mut()
-            .filter(|e| filter.fit(e))
-            .collect::<Vec<_>>();
-        let entry = entries.get_mut(idx).unwrap();
-        entry.description = val;
-        entry.editing = !entry.editing;
-    }
-
-    fn remove(&mut self, idx: usize) {
-        let idx = {
-            let filter = self.filter.clone();
-            let entries = self
-                .entries
-                .iter()
-                .enumerate()
-                .filter(|&(_, e)| filter.fit(e))
-                .collect::<Vec<_>>();
-            let &(idx, _) = entries.get(idx).unwrap();
-            idx
-        };
-        self.entries.remove(idx);
     }
 }
