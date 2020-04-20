@@ -8,7 +8,7 @@ The lists live entirely in your browser's local storage.  This does not connect 
 
 ## Use and Development
 
-You can use whatever release of [Automatic Spoon](https://tene.github.io/automatic-spoon/) I'm personally using in your browser.  This may change unpredictably, and might lose any data you've stored there.  I plan to add some kind of export functionality so you can save whatever you've made with this, and I'll try to support importing old exports whenever it's easy and convenient.
+You can use whatever release of [Automatic Spoon](https://tene.github.io/automatic-spoon/) I'm personally using in your browser.  This may change unpredictably, and might lose any data you've stored there.  Save the export if you care about data here.  If I ever get around to adding support for loading exported data, I'll try to support loading old exports if it's convenient.
 
 Build with `yarn run build`
 
@@ -20,4 +20,3 @@ This app is built in Rust using [Yew](https://yew.rs/).  As GitHub mentions, I s
 
 - Choose order and rearrange lists within a group
 - Turn off heartbeat timer while all lists in chosen group are frozen.
-- Export/import data

@@ -49,3 +49,9 @@
 .image img {
     height: 400px;
 }
+
+.footer {
+    grid-area: footer;
+    white-space: nowrap;
+    overflow-x: auto;
+}

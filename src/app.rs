@@ -1,8 +1,10 @@
+use js_sys::Array;
 use log::*;
 use rand::{rngs::OsRng, seq::IteratorRandom};
 use serde_derive::{Deserialize, Serialize};
 use std::{collections::BTreeMap, time::Duration};
-use yew::format::Json;
+use web_sys::{Blob, Url};
+use yew::format::{Json, Text};
 use yew::prelude::*;
 use yew::services::{
     storage::{Area, StorageService},
@@ -35,6 +37,8 @@ pub struct View {
     new_group_name: String,
     cache: BTreeMap<String, Item>,
     current_item: Option<usize>,
+    export_url: Option<String>,
+    cached_export: String,
 }
 
 impl View {
@@ -358,7 +362,7 @@ impl Component for App {
             Tick => {}
             Nothing => {}
         }
-        self.storage.store(KEY, Json(&self.state));
+        self.store_and_export();
         true
     }
 
@@ -373,9 +377,12 @@ impl Component for App {
                 { self.render_lists()}
                 {self.render_list()}
                 {self.render_edit_item()}
-                <button class="purge" onclick=self.link.callback(|_| Msg::Purge)>
-                    {"Purge Everything"}
-                </button>
+                <div class="footer">
+                    <button class="purge" onclick=self.link.callback(|_| Msg::Purge)>
+                        {"Purge Everything"}
+                    </button>
+                    {self.render_export_link()}
+                </div>
             </div>
             </>
         }
@@ -383,6 +390,28 @@ impl Component for App {
 }
 
 impl App {
+    fn store_and_export(&mut self) {
+        let data: Text = Json(&self.state).into();
+        if let Ok(data) = data {
+            if data != self.view.cached_export {
+                info!(
+                    "{}\n{}\n{}",
+                    &data,
+                    &self.view.cached_export,
+                    data == self.view.cached_export
+                );
+                self.storage.store(KEY, Ok(data.clone()));
+                let strings = Array::new();
+                strings.push(&data.clone().into());
+
+                let blob = Blob::new_with_str_sequence(&strings.into()).unwrap();
+
+                let url = Url::create_object_url_with_blob(&blob).unwrap_or_default();
+                self.view.export_url = Some(url);
+                self.view.cached_export = data;
+            }
+        }
+    }
     fn get_current_list(&self) -> Option<&Vec<Item>> {
         self.state.lists.get(&self.view.current_list)
     }
@@ -401,6 +430,17 @@ impl App {
         match (self.get_current_list(), maybe_index) {
             (Some(list), Some(idx)) => list.get(idx).map(|item| (idx, item)),
             _ => None,
+        }
+    }
+    fn render_export_link(&self) -> Html {
+        if let Some(url) = self.view.export_url.as_ref().cloned() {
+            html! {
+                <a href=url target="_blank">{"Export Data"}</a>
+            }
+        } else {
+            html! {
+                <p>{"Error generating data export"}</p>
+            }
         }
     }
     fn render_groups(&self) -> Html {
