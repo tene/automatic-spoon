@@ -45,3 +45,7 @@
 .edit-item {
     grid-area: edit-item;
 }
+
+.image img {
+    height: 400px;
+}
